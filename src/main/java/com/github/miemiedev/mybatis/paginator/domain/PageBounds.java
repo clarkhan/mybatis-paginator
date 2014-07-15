@@ -92,6 +92,24 @@ public class PageBounds extends RowBounds implements Serializable {
 
 	}
 
+	/**
+	 * 是否有Where条件
+	 * 
+	 * @return
+	 */
+	public boolean hasWhereClause() {
+		return StringUtils.hasText(whereClause);
+	}
+
+	/**
+	 * 是否有排序条件
+	 * 
+	 * @return
+	 */
+	public boolean hasOrderByClause() {
+		return StringUtils.hasText(orderByClause) || (null != orders && !orders.isEmpty());
+	}
+
 	public int getPage() {
 		return page;
 	}
