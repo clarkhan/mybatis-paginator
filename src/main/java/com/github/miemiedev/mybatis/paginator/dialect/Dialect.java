@@ -158,8 +158,8 @@ public class Dialect {
 			return sql;
 		}
 		StringBuilder sqlBuilder = new StringBuilder("select * from (").append(sql).append(") temp_order order by ");
-		if (StringUtils.hasText(pageBounds.getWhereClause())) {
-			return sqlBuilder.append(pageBounds.getWhereClause()).toString();
+		if (StringUtils.hasText(pageBounds.getOrderByClause())) {
+			return sqlBuilder.append(pageBounds.getOrderByClause()).toString();
 		}
 		for (Order order : pageBounds.getOrders()) {
 			if (order != null) {
