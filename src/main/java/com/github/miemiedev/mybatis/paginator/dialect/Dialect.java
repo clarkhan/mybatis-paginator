@@ -2,6 +2,7 @@ package com.github.miemiedev.mybatis.paginator.dialect;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 
@@ -13,6 +14,9 @@ import org.springframework.util.StringUtils;
 
 import com.github.miemiedev.mybatis.paginator.domain.Order;
 import com.github.miemiedev.mybatis.paginator.domain.PageBounds;
+import com.github.miemiedev.mybatis.paginator.domain.WhereCriteria;
+import com.github.miemiedev.mybatis.paginator.domain.WhereCriteria.Criteria;
+import com.github.miemiedev.mybatis.paginator.domain.WhereCriteria.Criterion;
 
 /**
  * 类似hibernate的Dialect,但只精简出分页部分
@@ -30,7 +34,9 @@ public class Dialect {
 	protected Object parameterObject;
 	protected BoundSql boundSql;
 	protected List<ParameterMapping> parameterMappings;
+	protected List<ParameterMapping> whereTempMappings;
 	protected Map<String, Object> pageParameters = new HashMap<String, Object>();
+	protected int nowParamIndex = 0;
 
 	private String pageSQL;
 	private String countSQL;
@@ -62,7 +68,7 @@ public class Dialect {
 		String sql = bufferSql.toString();
 
 		// 拼装WHERE 条件
-		pageSQL = imbedWhereClause(sql, pageBounds.getWhereClause());
+		pageSQL = imbedWhereClause(sql);
 		// 拼装OrderBy条件
 		pageSQL = imbedOrderClause(pageSQL, pageBounds);
 
@@ -89,6 +95,13 @@ public class Dialect {
 		ParameterMapping parameterMapping = new ParameterMapping.Builder(mappedStatement.getConfiguration(), name, type)
 				.build();
 		parameterMappings.add(parameterMapping);
+		pageParameters.put(name, value);
+	}
+
+	protected void setWhereParameter(String name, Object value, Class<?> type) {
+		ParameterMapping parameterMapping = new ParameterMapping.Builder(mappedStatement.getConfiguration(), name, type)
+				.build();
+		whereTempMappings.add(parameterMapping);
 		pageParameters.put(name, value);
 	}
 
@@ -126,24 +139,115 @@ public class Dialect {
 	 * @param clause 不含“where”的搜索条件
 	 * @return
 	 */
-	protected String imbedWhereClause(String sql, String clause) {
-		if (!StringUtils.hasText(clause)) {
-			return sql;
-		}
+	private String imbedStrWhereClause(String sql, String clause) {
 		boolean containsWhere = sql.matches("[\\s\\S]* (?i)where [\\s\\S]*");
+		String whereStr = " where ";
 		if (!containsWhere) {
-			clause = " where ".concat(clause);
+			clause = whereStr.concat(clause);
 		}
 		if (sql.contains(WHERE_CLAUSE_PLACEHOLDER)) {
+			// 把Where参数插入到指定位置
+			int beforeNum = getBeforeNum(sql, WHERE_CLAUSE_PLACEHOLDER, "?");
+			parameterMappings.addAll(beforeNum, whereTempMappings);
 			// 如果 sql中使用 WHERE_CLAUSE_PLACEHOLDER 占位符 则直接替换
 			return sql.replace(WHERE_CLAUSE_PLACEHOLDER, clause);
 		}
 		if (containsWhere) {
 			// 如果存在where，则直接替换第一个
-			return sql.replaceFirst(" (?i)where ", clause).concat(" and ");
+			String resultSql = sql.replaceFirst(" (?i)where ", whereStr.concat(clause).concat(" and "));
+			// 把Where参数插入到指定位置
+			int beforeNum = getBeforeNum(sql, whereStr, "?");
+			parameterMappings.addAll(beforeNum, whereTempMappings);
+			return resultSql;
 		}
+
+		parameterMappings.addAll(whereTempMappings);
 		// 没使用占位符且不存在where的，直接添加在最后
 		return sql.concat(clause);
+	}
+
+	/**
+	 * 获取oStr 中，在idStr前有多少个tStr
+	 * 
+	 * @param oStr
+	 * @param id
+	 * @param tStr
+	 * @return
+	 */
+	private int getBeforeNum(String oStr, String id, String tStr) {
+		int index = oStr.indexOf(id);
+		if (index < 0) {
+			return 0;
+		}
+		String substring = oStr.substring(0, index);
+		if (substring.indexOf(tStr) < 0) {
+			return 0;
+		}
+		return substring.split(tStr).length - 1;
+	}
+
+	protected String imbedWhereClause(String sql) {
+		if (!pageBounds.hasWhereClause()) {
+			return sql;
+		}
+
+		whereTempMappings = new LinkedList<ParameterMapping>();
+
+		WhereCriteria whereClause = pageBounds.getWhereClause();
+		List<Criteria> oredCriteria = whereClause.getOredCriteria();
+
+		StringBuilder sb = new StringBuilder();
+		for (Criteria criteria : oredCriteria) {
+			if (criteria.isValid()) {
+				sb.append("(");
+				for (Criterion criterion : criteria.getCriteria()) {
+					if (criterion.isNoValue()) {
+						sb.append(" and ").append(criterion.getCondition());
+					}
+					if (criterion.isSingleValue()) {
+						sb.append(" and ").append(criterion.getCondition()).append("?");
+						String whereParamName = getWhereParamName();
+						setWhereParameter(whereParamName, criterion.getValue(), criterion.getValue().getClass());
+					}
+					if (criterion.isBetweenValue()) {
+						sb.append(" and ").append(criterion.getCondition()).append("?").append(" and ").append("?");
+						String whereParamName = getWhereParamName();
+						String secondWhereParamName = getWhereParamName();
+						setWhereParameter(whereParamName, criterion.getValue(), criterion.getValue().getClass());
+						setWhereParameter(secondWhereParamName, criterion.getSecondValue(), criterion.getSecondValue()
+								.getClass());
+					}
+					if (criterion.isListValue()) {
+						if (!(criterion.getValue() instanceof Iterable)) {
+							throw new IllegalArgumentException("criterion.value 不可遍历！");
+						}
+						sb.append(" and ").append(criterion.getCondition()).append(" ( ");
+						for (Object obj : (Iterable<?>) criterion.getValue()) {
+							String whereParamName = getWhereParamName();
+							sb.append(" ? ").append(",");
+							setWhereParameter(whereParamName, obj, obj.getClass());
+						}
+						if (sb.charAt(sb.length() - 1) == ',') {
+							sb.deleteCharAt(sb.length() - 1);
+						}
+						sb.append(")");
+					}
+				}
+				int firstIndex = sb.indexOf("and");
+				sb.delete(firstIndex, firstIndex + 3);
+				sb.append(")");
+			}
+			sb.append(" or ");
+		}
+		sb.delete(sb.lastIndexOf("or "), sb.length());
+		if (sb.length() > 2) {
+			return imbedStrWhereClause(sql, sb.toString());
+		}
+		return sql;
+	}
+
+	private String getWhereParamName() {
+		return "__Where_Param_" + (++nowParamIndex);
 	}
 
 	/**

@@ -26,7 +26,6 @@ import org.apache.ibatis.session.ResultHandler;
 import org.apache.ibatis.session.RowBounds;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.util.StringUtils;
 
 import com.github.miemiedev.mybatis.paginator.dialect.Dialect;
 import com.github.miemiedev.mybatis.paginator.domain.PageBounds;
@@ -66,8 +65,7 @@ public class OffsetLimitInterceptor implements Interceptor {
 		final PageBounds pageBounds = new PageBounds(rowBounds);
 
 		if (pageBounds.getOffset() == RowBounds.NO_ROW_OFFSET && pageBounds.getLimit() == RowBounds.NO_ROW_LIMIT
-				&& !StringUtils.hasText(pageBounds.getOrderByClause()) && pageBounds.getOrders().isEmpty()
-				&& !StringUtils.hasText(pageBounds.getWhereClause())) {
+				&& !pageBounds.hasOrderByClause() && !pageBounds.hasOrderByClause()) {
 			return invocation.proceed();
 		}
 

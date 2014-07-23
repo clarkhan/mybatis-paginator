@@ -31,8 +31,10 @@ public class PageBounds extends RowBounds implements Serializable {
 	/** 异步查询总数 */
 	protected Boolean asyncTotalCount;
 
-	/** 附加的where 条件 */
-	private String whereClause;
+	/**
+	 * 分页条件对象
+	 */
+	private WhereCriteria whereClause;
 	/** 已组装好的排序语句 */
 	private String orderByClause;
 
@@ -94,12 +96,15 @@ public class PageBounds extends RowBounds implements Serializable {
 	}
 
 	/**
-	 * 是否有Where条件
+	 * 是否有有意义的Where条件
 	 * 
 	 * @return
 	 */
+	/**
+	 * @return
+	 */
 	public boolean hasWhereClause() {
-		return StringUtils.hasText(whereClause);
+		return null != whereClause && null != whereClause.getOredCriteria() && !whereClause.getOredCriteria().isEmpty();
 	}
 
 	/**
@@ -153,6 +158,20 @@ public class PageBounds extends RowBounds implements Serializable {
 	}
 
 	/**
+	 * @return the whereClause
+	 */
+	public WhereCriteria getWhereClause() {
+		return whereClause;
+	}
+
+	/**
+	 * @param whereClause the whereClause to set
+	 */
+	public void setWhereClause(WhereCriteria whereClause) {
+		this.whereClause = whereClause;
+	}
+
+	/**
 	 * @return the orderByClause
 	 */
 	public String getOrderByClause() {
@@ -164,20 +183,6 @@ public class PageBounds extends RowBounds implements Serializable {
 	 */
 	public void setOrderByClause(String orderByClause) {
 		this.orderByClause = orderByClause;
-	}
-
-	/**
-	 * @return the whereClause
-	 */
-	public String getWhereClause() {
-		return whereClause;
-	}
-
-	/**
-	 * @param whereClause the whereClause to set
-	 */
-	public void setWhereClause(String whereClause) {
-		this.whereClause = whereClause;
 	}
 
 	@Override
